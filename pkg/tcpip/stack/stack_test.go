@@ -202,7 +202,7 @@ func (*fakeNetworkProtocol) ParseAddresses(v buffer.View) (src, dst tcpip.Addres
 	return tcpip.Address(v[1:2]), tcpip.Address(v[0:1])
 }
 
-func (f *fakeNetworkProtocol) NewEndpoint(nicID tcpip.NICID, addrWithPrefix tcpip.AddressWithPrefix, linkAddrCache stack.LinkAddressCache, dispatcher stack.TransportDispatcher, ep stack.LinkEndpoint, _ *stack.Stack) (stack.NetworkEndpoint, *tcpip.Error) {
+func (f *fakeNetworkProtocol) NewEndpoint(nicID tcpip.NICID, addrWithPrefix tcpip.AddressWithPrefix, nudHandler stack.NUDHandler, dispatcher stack.TransportDispatcher, ep stack.LinkEndpoint, _ *stack.Stack) (stack.NetworkEndpoint, *tcpip.Error) {
 	return &fakeNetworkEndpoint{
 		nicID:      nicID,
 		id:         stack.NetworkEndpointID{LocalAddress: addrWithPrefix.Address},
@@ -3005,7 +3005,9 @@ func TestIPv6SourceAddressSelectionScopeAndSameAddress(t *testing.T) {
 				Gateway:     llAddr3,
 				NIC:         nicID,
 			}})
-			s.AddLinkAddress(nicID, llAddr3, linkAddr3)
+			if err := s.AddStaticNeighbor(nicID, llAddr3, linkAddr3); err != nil {
+				t.Errorf("s.AddStaticNeighbor(%d, %s, %s): %s", nicID, llAddr3, linkAddr3, err)
+			}
 
 			for _, a := range test.nicAddrs {
 				if err := s.AddAddress(nicID, ipv6.ProtocolNumber, a); err != nil {
