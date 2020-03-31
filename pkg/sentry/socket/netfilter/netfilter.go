@@ -19,6 +19,7 @@ package netfilter
 import (
 	"errors"
 	"fmt"
+	"math/rand"
 
 	"gvisor.dev/gvisor/pkg/abi/linux"
 	"gvisor.dev/gvisor/pkg/binary"
@@ -541,6 +542,21 @@ func SetEntries(stk *stack.Stack, optVal []byte) *syserr.Error {
 		Size:       replace.Size,
 	})
 	ipt.Tables[replace.Name.String()] = table
+
+	// Initialize connection tracking table for nat.
+	// TODO(gvisor.dev/issue/170): We should support deleting
+	// specific connection tracking entry.
+	if replace.Name.String() == stack.TablenameNat {
+		b := make([]byte, 4)
+		if _, err := rand.Read(b); err != nil {
+			panic(err)
+		}
+		ct := stack.ConnTrackTable{
+			CtMap: make(map[uint32]stack.ConnTrackTupleHolder),
+			Seed:  binary.LittleEndian.Uint32(b),
+		}
+		ipt.Connections = &ct
+	}
 	stk.SetIPTables(ipt)
 
 	return nil

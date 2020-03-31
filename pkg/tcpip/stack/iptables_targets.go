@@ -24,7 +24,7 @@ import (
 type AcceptTarget struct{}
 
 // Action implements Target.Action.
-func (AcceptTarget) Action(packet PacketBuffer) (RuleVerdict, int) {
+func (AcceptTarget) Action(PacketBuffer, *ConnTrackTable, Hook, *GSO, *Route) (RuleVerdict, int) {
 	return RuleAccept, 0
 }
 
@@ -32,7 +32,7 @@ func (AcceptTarget) Action(packet PacketBuffer) (RuleVerdict, int) {
 type DropTarget struct{}
 
 // Action implements Target.Action.
-func (DropTarget) Action(packet PacketBuffer) (RuleVerdict, int) {
+func (DropTarget) Action(PacketBuffer, *ConnTrackTable, Hook, *GSO, *Route) (RuleVerdict, int) {
 	return RuleDrop, 0
 }
 
@@ -41,7 +41,7 @@ func (DropTarget) Action(packet PacketBuffer) (RuleVerdict, int) {
 type ErrorTarget struct{}
 
 // Action implements Target.Action.
-func (ErrorTarget) Action(packet PacketBuffer) (RuleVerdict, int) {
+func (ErrorTarget) Action(PacketBuffer, *ConnTrackTable, Hook, *GSO, *Route) (RuleVerdict, int) {
 	log.Debugf("ErrorTarget triggered.")
 	return RuleDrop, 0
 }
@@ -52,7 +52,7 @@ type UserChainTarget struct {
 }
 
 // Action implements Target.Action.
-func (UserChainTarget) Action(PacketBuffer) (RuleVerdict, int) {
+func (UserChainTarget) Action(PacketBuffer, *ConnTrackTable, Hook, *GSO, *Route) (RuleVerdict, int) {
 	panic("UserChainTarget should never be called.")
 }
 
@@ -61,7 +61,7 @@ func (UserChainTarget) Action(PacketBuffer) (RuleVerdict, int) {
 type ReturnTarget struct{}
 
 // Action implements Target.Action.
-func (ReturnTarget) Action(PacketBuffer) (RuleVerdict, int) {
+func (ReturnTarget) Action(PacketBuffer, *ConnTrackTable, Hook, *GSO, *Route) (RuleVerdict, int) {
 	return RuleReturn, 0
 }
 
@@ -90,20 +90,26 @@ type RedirectTarget struct {
 
 // Action implements Target.Action.
 // TODO(gvisor.dev/issue/170): Parse headers without copying. The current
-// implementation only works for PREROUTING and calls pkt.Clone(), neither
-// of which should be the case.
-func (rt RedirectTarget) Action(pkt PacketBuffer) (RuleVerdict, int) {
-	newPkt := pkt.Clone()
+// implementation works for PREROUTING and OUTPUT hooks. It calls pkt.Clone()
+// which should not be the case.
+func (rt RedirectTarget) Action(pkt PacketBuffer, ct *ConnTrackTable, hook Hook, gso *GSO, r *Route) (RuleVerdict, int) {
+	newPkt := pkt
+	var netHeader header.IPv4
+	if hook == Prerouting {
+		newPkt = pkt.Clone()
 
-	// Set network header.
-	headerView := newPkt.Data.First()
-	netHeader := header.IPv4(headerView)
-	newPkt.NetworkHeader = headerView[:header.IPv4MinimumSize]
+		// Set network header.
+		headerView := newPkt.Data.First()
+		netHeader = header.IPv4(headerView)
+		newPkt.NetworkHeader = headerView[:header.IPv4MinimumSize]
 
-	hlen := int(netHeader.HeaderLength())
-	tlen := int(netHeader.TotalLength())
-	newPkt.Data.TrimFront(hlen)
-	newPkt.Data.CapLength(tlen - hlen)
+		hlen := int(netHeader.HeaderLength())
+		tlen := int(netHeader.TotalLength())
+		newPkt.Data.TrimFront(hlen)
+		newPkt.Data.CapLength(tlen - hlen)
+	} else if hook == Output {
+		netHeader = header.IPv4(newPkt.NetworkHeader)
+	}
 
 	// TODO(gvisor.dev/issue/170): Change destination address to
 	// loopback or interface address on which the packet was
@@ -123,19 +129,35 @@ func (rt RedirectTarget) Action(pkt PacketBuffer) (RuleVerdict, int) {
 			udpHeader = header.UDP(newPkt.Data.First())
 		}
 		udpHeader.SetDestinationPort(rt.MinPort)
-	case header.TCPProtocolNumber:
-		var tcpHeader header.TCP
-		if newPkt.TransportHeader != nil {
-			tcpHeader = header.TCP(newPkt.TransportHeader)
-		} else {
-			if len(pkt.Data.First()) < header.TCPMinimumSize {
-				return RuleDrop, 0
+
+		// Calcualte UDP checksum and set it.
+		if hook == Output {
+			udpHeader.SetChecksum(0)
+			hdr := &pkt.Header
+			length := uint16(pkt.Data.Size()+hdr.UsedLength()) - uint16(netHeader.HeaderLength())
+
+			// Only calculate the checksum if offloading isn't supported.
+			if r.Capabilities()&CapabilityTXChecksumOffload == 0 {
+				xsum := r.PseudoHeaderChecksum(protocol, length)
+				for _, v := range pkt.Data.Views() {
+					xsum = header.Checksum(v, xsum)
+				}
+				udpHeader.SetChecksum(^udpHeader.CalculateChecksum(xsum))
 			}
-			tcpHeader = header.TCP(newPkt.TransportHeader)
 		}
-		// TODO(gvisor.dev/issue/170): Need to recompute checksum
-		// and implement nat connection tracking to support TCP.
-		tcpHeader.SetDestinationPort(rt.MinPort)
+	case header.TCPProtocolNumber:
+		if ct == nil {
+			return RuleAccept, 0
+		}
+
+		// Set up conection for matching NAT rule.
+		// Only the first packet of the connection comes here.
+		// Other packets will be manipulated in connection tracking.
+		ct.SetConnTrack(pkt, hook)
+		ct.SetNatInfo(pkt, rt, hook)
+		if !ct.ManipPacket(pkt, hook, gso, r) {
+			return RuleDrop, 0
+		}
 	default:
 		return RuleDrop, 0
 	}

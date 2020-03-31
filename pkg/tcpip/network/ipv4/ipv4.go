@@ -247,7 +247,7 @@ func (e *endpoint) WritePacket(r *stack.Route, gso *stack.GSO, params stack.Netw
 	// iptables filtering. All packets that reach here are locally
 	// generated.
 	ipt := e.stack.IPTables()
-	if ok := ipt.Check(stack.Output, pkt); !ok {
+	if ok := ipt.Check(stack.Output, pkt, gso, r); !ok {
 		// iptables is telling us to drop the packet.
 		return nil
 	}
@@ -297,7 +297,7 @@ func (e *endpoint) WritePackets(r *stack.Route, gso *stack.GSO, pkts stack.Packe
 	// iptables filtering. All packets that reach here are locally
 	// generated.
 	ipt := e.stack.IPTables()
-	dropped := ipt.CheckPackets(stack.Output, pkts)
+	dropped := ipt.CheckPackets(stack.Output, pkts, gso, r)
 	if len(dropped) == 0 {
 		// Fast path: If no packets are to be dropped then we can just invoke the
 		// faster WritePackets API directly.
@@ -394,7 +394,7 @@ func (e *endpoint) HandlePacket(r *stack.Route, pkt stack.PacketBuffer) {
 	// iptables filtering. All packets that reach here are intended for
 	// this machine and will not be forwarded.
 	ipt := e.stack.IPTables()
-	if ok := ipt.Check(stack.Input, pkt); !ok {
+	if ok := ipt.Check(stack.Input, pkt, nil, nil); !ok {
 		// iptables is telling us to drop the packet.
 		return
 	}

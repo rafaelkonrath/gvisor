@@ -25,6 +25,7 @@ import (
 )
 
 var name = flag.String("name", "", "name of the test to run")
+var listenerPort = flag.Int("port", 0, "listener port")
 
 func main() {
 	flag.Parse()
@@ -43,7 +44,7 @@ func main() {
 	}
 
 	// Run the test.
-	if err := test.ContainerAction(ip); err != nil {
+	if err := test.ContainerAction(ip, *listenerPort); err != nil {
 		log.Fatalf("Failed running test %q: %v", *name, err)
 	}
 }

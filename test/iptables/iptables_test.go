@@ -46,7 +46,7 @@ type result struct {
 //
 // Container output is logged to $TEST_UNDECLARED_OUTPUTS_DIR if it exists, or
 // to stderr.
-func singleTest(test TestCase) error {
+func singleTest(test TestCase, lConn *net.TCPListener) error {
 	if _, ok := Tests[test.Name()]; !ok {
 		return fmt.Errorf("no test found with name %q. Has it been registered?", test.Name())
 	}
@@ -56,7 +56,12 @@ func singleTest(test TestCase) error {
 	defer cont.CleanUp()
 	resultChan := make(chan *result)
 	go func() {
-		output, err := cont.RunFg("--cap-add=NET_ADMIN", *image, "-name", test.Name())
+		var port int
+		if lConn != nil {
+			addr := lConn.Addr()
+			port = addr.(*net.TCPAddr).Port
+		}
+		output, err := cont.RunFg("--cap-add=NET_ADMIN", *image, "-name", test.Name(), "-port", fmt.Sprintf("%d", port))
 		logContainer(output, err)
 		resultChan <- &result{output, err}
 	}()
@@ -75,7 +80,7 @@ func singleTest(test TestCase) error {
 	// Run our side of the test.
 	errChan := make(chan error)
 	go func() {
-		errChan <- test.LocalAction(ip)
+		errChan <- test.LocalAction(ip, lConn)
 	}()
 
 	// Wait for both the container and local tests to finish.
@@ -161,47 +166,66 @@ func logContainer(output string, err error) {
 }
 
 func TestFilterInputDropUDP(t *testing.T) {
-	if err := singleTest(FilterInputDropUDP{}); err != nil {
+	if err := singleTest(FilterInputDropUDP{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestFilterInputDropUDPPort(t *testing.T) {
-	if err := singleTest(FilterInputDropUDPPort{}); err != nil {
+	if err := singleTest(FilterInputDropUDPPort{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestFilterInputDropDifferentUDPPort(t *testing.T) {
-	if err := singleTest(FilterInputDropDifferentUDPPort{}); err != nil {
+	if err := singleTest(FilterInputDropDifferentUDPPort{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestFilterInputDropAll(t *testing.T) {
-	if err := singleTest(FilterInputDropAll{}); err != nil {
+	if err := singleTest(FilterInputDropAll{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestFilterInputDropOnlyUDP(t *testing.T) {
-	if err := singleTest(FilterInputDropOnlyUDP{}); err != nil {
+	if err := singleTest(FilterInputDropOnlyUDP{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestNATRedirectUDPPort(t *testing.T) {
-	// TODO(gvisor.dev/issue/170): Enable when supported.
-	t.Skip("NAT isn't supported yet (gvisor.dev/issue/170).")
-	if err := singleTest(NATRedirectUDPPort{}); err != nil {
+func TestNATPreRedirectUDPPort(t *testing.T) {
+	if err := singleTest(NATPreRedirectUDPPort{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestNATRedirectTCPPort(t *testing.T) {
-	// TODO(gvisor.dev/issue/170): Enable when supported.
-	t.Skip("NAT isn't supported yet (gvisor.dev/issue/170).")
-	if err := singleTest(NATRedirectTCPPort{}); err != nil {
+func TestNATPreRedirectTCPPort(t *testing.T) {
+	if err := singleTest(NATPreRedirectTCPPort{}, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestNATOutRedirectUDPPort(t *testing.T) {
+	if err := singleTest(NATOutRedirectUDPPort{}, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestNATOutRedirectTCPPort(t *testing.T) {
+	var localAddr net.TCPAddr
+
+	// Starts listening on port.
+	lConn, err := net.ListenTCP("tcp", &localAddr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lConn.Close()
+
+	// Accept connections on port.
+	lConn.SetDeadline(time.Now().Add(timeout * 2))
+	if err := singleTest(NATOutRedirectTCPPort{}, lConn); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -209,7 +233,7 @@ func TestNATRedirectTCPPort(t *testing.T) {
 func TestNATDropUDP(t *testing.T) {
 	// TODO(gvisor.dev/issue/170): Enable when supported.
 	t.Skip("NAT isn't supported yet (gvisor.dev/issue/170).")
-	if err := singleTest(NATDropUDP{}); err != nil {
+	if err := singleTest(NATDropUDP{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -217,43 +241,43 @@ func TestNATDropUDP(t *testing.T) {
 func TestNATAcceptAll(t *testing.T) {
 	// TODO(gvisor.dev/issue/170): Enable when supported.
 	t.Skip("NAT isn't supported yet (gvisor.dev/issue/170).")
-	if err := singleTest(NATAcceptAll{}); err != nil {
+	if err := singleTest(NATAcceptAll{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestFilterInputDropTCPDestPort(t *testing.T) {
-	if err := singleTest(FilterInputDropTCPDestPort{}); err != nil {
+	if err := singleTest(FilterInputDropTCPDestPort{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestFilterInputDropTCPSrcPort(t *testing.T) {
-	if err := singleTest(FilterInputDropTCPSrcPort{}); err != nil {
+	if err := singleTest(FilterInputDropTCPSrcPort{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestFilterInputCreateUserChain(t *testing.T) {
-	if err := singleTest(FilterInputCreateUserChain{}); err != nil {
+	if err := singleTest(FilterInputCreateUserChain{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestFilterInputDefaultPolicyAccept(t *testing.T) {
-	if err := singleTest(FilterInputDefaultPolicyAccept{}); err != nil {
+	if err := singleTest(FilterInputDefaultPolicyAccept{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestFilterInputDefaultPolicyDrop(t *testing.T) {
-	if err := singleTest(FilterInputDefaultPolicyDrop{}); err != nil {
+	if err := singleTest(FilterInputDefaultPolicyDrop{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestFilterInputReturnUnderflow(t *testing.T) {
-	if err := singleTest(FilterInputReturnUnderflow{}); err != nil {
+	if err := singleTest(FilterInputReturnUnderflow{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -261,7 +285,7 @@ func TestFilterInputReturnUnderflow(t *testing.T) {
 func TestFilterOutputDropTCPDestPort(t *testing.T) {
 	// TODO(gvisor.dev/issue/170): Enable when supported.
 	t.Skip("filter OUTPUT isn't supported yet (gvisor.dev/issue/170).")
-	if err := singleTest(FilterOutputDropTCPDestPort{}); err != nil {
+	if err := singleTest(FilterOutputDropTCPDestPort{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -269,97 +293,97 @@ func TestFilterOutputDropTCPDestPort(t *testing.T) {
 func TestFilterOutputDropTCPSrcPort(t *testing.T) {
 	// TODO(gvisor.dev/issue/170): Enable when supported.
 	t.Skip("filter OUTPUT isn't supported yet (gvisor.dev/issue/170).")
-	if err := singleTest(FilterOutputDropTCPSrcPort{}); err != nil {
+	if err := singleTest(FilterOutputDropTCPSrcPort{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestFilterOutputAcceptTCPOwner(t *testing.T) {
-	if err := singleTest(FilterOutputAcceptTCPOwner{}); err != nil {
+	if err := singleTest(FilterOutputAcceptTCPOwner{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestFilterOutputDropTCPOwner(t *testing.T) {
-	if err := singleTest(FilterOutputDropTCPOwner{}); err != nil {
+	if err := singleTest(FilterOutputDropTCPOwner{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestFilterOutputAcceptUDPOwner(t *testing.T) {
-	if err := singleTest(FilterOutputAcceptUDPOwner{}); err != nil {
+	if err := singleTest(FilterOutputAcceptUDPOwner{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestFilterOutputDropUDPOwner(t *testing.T) {
-	if err := singleTest(FilterOutputDropUDPOwner{}); err != nil {
+	if err := singleTest(FilterOutputDropUDPOwner{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestFilterOutputOwnerFail(t *testing.T) {
-	if err := singleTest(FilterOutputOwnerFail{}); err != nil {
+	if err := singleTest(FilterOutputOwnerFail{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestJumpSerialize(t *testing.T) {
-	if err := singleTest(FilterInputSerializeJump{}); err != nil {
+	if err := singleTest(FilterInputSerializeJump{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestJumpBasic(t *testing.T) {
-	if err := singleTest(FilterInputJumpBasic{}); err != nil {
+	if err := singleTest(FilterInputJumpBasic{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestJumpReturn(t *testing.T) {
-	if err := singleTest(FilterInputJumpReturn{}); err != nil {
+	if err := singleTest(FilterInputJumpReturn{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestJumpReturnDrop(t *testing.T) {
-	if err := singleTest(FilterInputJumpReturnDrop{}); err != nil {
+	if err := singleTest(FilterInputJumpReturnDrop{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestJumpBuiltin(t *testing.T) {
-	if err := singleTest(FilterInputJumpBuiltin{}); err != nil {
+	if err := singleTest(FilterInputJumpBuiltin{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestJumpTwice(t *testing.T) {
-	if err := singleTest(FilterInputJumpTwice{}); err != nil {
+	if err := singleTest(FilterInputJumpTwice{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestInputDestination(t *testing.T) {
-	if err := singleTest(FilterInputDestination{}); err != nil {
+	if err := singleTest(FilterInputDestination{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestInputInvertDestination(t *testing.T) {
-	if err := singleTest(FilterInputInvertDestination{}); err != nil {
+	if err := singleTest(FilterInputInvertDestination{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestOutputDestination(t *testing.T) {
-	if err := singleTest(FilterOutputDestination{}); err != nil {
+	if err := singleTest(FilterOutputDestination{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestOutputInvertDestination(t *testing.T) {
-	if err := singleTest(FilterOutputInvertDestination{}); err != nil {
+	if err := singleTest(FilterOutputInvertDestination{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -367,7 +391,7 @@ func TestOutputInvertDestination(t *testing.T) {
 func TestNATOutRedirectIP(t *testing.T) {
 	// TODO(gvisor.dev/issue/170): Enable when supported.
 	t.Skip("NAT isn't supported yet (gvisor.dev/issue/170).")
-	if err := singleTest(NATOutRedirectIP{}); err != nil {
+	if err := singleTest(NATOutRedirectIP{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -375,7 +399,7 @@ func TestNATOutRedirectIP(t *testing.T) {
 func TestNATOutDontRedirectIP(t *testing.T) {
 	// TODO(gvisor.dev/issue/170): Enable when supported.
 	t.Skip("NAT isn't supported yet (gvisor.dev/issue/170).")
-	if err := singleTest(NATOutDontRedirectIP{}); err != nil {
+	if err := singleTest(NATOutDontRedirectIP{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -383,7 +407,7 @@ func TestNATOutDontRedirectIP(t *testing.T) {
 func TestNATOutRedirectInvert(t *testing.T) {
 	// TODO(gvisor.dev/issue/170): Enable when supported.
 	t.Skip("NAT isn't supported yet (gvisor.dev/issue/170).")
-	if err := singleTest(NATOutRedirectInvert{}); err != nil {
+	if err := singleTest(NATOutRedirectInvert{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -391,7 +415,7 @@ func TestNATOutRedirectInvert(t *testing.T) {
 func TestNATPreRedirectIP(t *testing.T) {
 	// TODO(gvisor.dev/issue/170): Enable when supported.
 	t.Skip("NAT isn't supported yet (gvisor.dev/issue/170).")
-	if err := singleTest(NATPreRedirectIP{}); err != nil {
+	if err := singleTest(NATPreRedirectIP{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -399,7 +423,7 @@ func TestNATPreRedirectIP(t *testing.T) {
 func TestNATPreDontRedirectIP(t *testing.T) {
 	// TODO(gvisor.dev/issue/170): Enable when supported.
 	t.Skip("NAT isn't supported yet (gvisor.dev/issue/170).")
-	if err := singleTest(NATPreDontRedirectIP{}); err != nil {
+	if err := singleTest(NATPreDontRedirectIP{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -407,7 +431,7 @@ func TestNATPreDontRedirectIP(t *testing.T) {
 func TestNATPreRedirectInvert(t *testing.T) {
 	// TODO(gvisor.dev/issue/170): Enable when supported.
 	t.Skip("NAT isn't supported yet (gvisor.dev/issue/170).")
-	if err := singleTest(NATPreRedirectInvert{}); err != nil {
+	if err := singleTest(NATPreRedirectInvert{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -415,7 +439,7 @@ func TestNATPreRedirectInvert(t *testing.T) {
 func TestNATRedirectRequiresProtocol(t *testing.T) {
 	// TODO(gvisor.dev/issue/170): Enable when supported.
 	t.Skip("NAT isn't supported yet (gvisor.dev/issue/170).")
-	if err := singleTest(NATRedirectRequiresProtocol{}); err != nil {
+	if err := singleTest(NATRedirectRequiresProtocol{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }

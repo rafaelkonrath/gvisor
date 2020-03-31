@@ -41,7 +41,7 @@ func (FilterOutputDropTCPDestPort) Name() string {
 }
 
 // ContainerAction implements TestCase.ContainerAction.
-func (FilterOutputDropTCPDestPort) ContainerAction(ip net.IP) error {
+func (FilterOutputDropTCPDestPort) ContainerAction(ip net.IP, _ int) error {
 	if err := filterTable("-A", "OUTPUT", "-p", "tcp", "-m", "tcp", "--dport", fmt.Sprintf("%d", dropPort), "-j", "DROP"); err != nil {
 		return err
 	}
@@ -55,7 +55,7 @@ func (FilterOutputDropTCPDestPort) ContainerAction(ip net.IP) error {
 }
 
 // LocalAction implements TestCase.LocalAction.
-func (FilterOutputDropTCPDestPort) LocalAction(ip net.IP) error {
+func (FilterOutputDropTCPDestPort) LocalAction(ip net.IP, _ *net.TCPListener) error {
 	if err := connectTCP(ip, acceptPort, sendloopDuration); err == nil {
 		return fmt.Errorf("connection on port %d should not be accepted, but got accepted", dropPort)
 	}
@@ -73,7 +73,7 @@ func (FilterOutputDropTCPSrcPort) Name() string {
 }
 
 // ContainerAction implements TestCase.ContainerAction.
-func (FilterOutputDropTCPSrcPort) ContainerAction(ip net.IP) error {
+func (FilterOutputDropTCPSrcPort) ContainerAction(ip net.IP, _ int) error {
 	if err := filterTable("-A", "OUTPUT", "-p", "tcp", "-m", "tcp", "--sport", fmt.Sprintf("%d", dropPort), "-j", "DROP"); err != nil {
 		return err
 	}
@@ -87,7 +87,7 @@ func (FilterOutputDropTCPSrcPort) ContainerAction(ip net.IP) error {
 }
 
 // LocalAction implements TestCase.LocalAction.
-func (FilterOutputDropTCPSrcPort) LocalAction(ip net.IP) error {
+func (FilterOutputDropTCPSrcPort) LocalAction(ip net.IP, _ *net.TCPListener) error {
 	if err := connectTCP(ip, dropPort, sendloopDuration); err == nil {
 		return fmt.Errorf("connection destined to port %d should not be accepted, but got accepted", dropPort)
 	}
@@ -104,7 +104,7 @@ func (FilterOutputAcceptTCPOwner) Name() string {
 }
 
 // ContainerAction implements TestCase.ContainerAction.
-func (FilterOutputAcceptTCPOwner) ContainerAction(ip net.IP) error {
+func (FilterOutputAcceptTCPOwner) ContainerAction(ip net.IP, _ int) error {
 	if err := filterTable("-A", "OUTPUT", "-p", "tcp", "-m", "owner", "--uid-owner", "root", "-j", "ACCEPT"); err != nil {
 		return err
 	}
@@ -118,7 +118,7 @@ func (FilterOutputAcceptTCPOwner) ContainerAction(ip net.IP) error {
 }
 
 // LocalAction implements TestCase.LocalAction.
-func (FilterOutputAcceptTCPOwner) LocalAction(ip net.IP) error {
+func (FilterOutputAcceptTCPOwner) LocalAction(ip net.IP, _ *net.TCPListener) error {
 	if err := connectTCP(ip, acceptPort, sendloopDuration); err != nil {
 		return fmt.Errorf("connection destined to port %d should be accepted, but got dropped", acceptPort)
 	}
@@ -135,7 +135,7 @@ func (FilterOutputDropTCPOwner) Name() string {
 }
 
 // ContainerAction implements TestCase.ContainerAction.
-func (FilterOutputDropTCPOwner) ContainerAction(ip net.IP) error {
+func (FilterOutputDropTCPOwner) ContainerAction(ip net.IP, _ int) error {
 	if err := filterTable("-A", "OUTPUT", "-p", "tcp", "-m", "owner", "--uid-owner", "root", "-j", "DROP"); err != nil {
 		return err
 	}
@@ -149,7 +149,7 @@ func (FilterOutputDropTCPOwner) ContainerAction(ip net.IP) error {
 }
 
 // LocalAction implements TestCase.LocalAction.
-func (FilterOutputDropTCPOwner) LocalAction(ip net.IP) error {
+func (FilterOutputDropTCPOwner) LocalAction(ip net.IP, _ *net.TCPListener) error {
 	if err := connectTCP(ip, acceptPort, sendloopDuration); err == nil {
 		return fmt.Errorf("connection destined to port %d should be dropped, but got accepted", acceptPort)
 	}
@@ -166,7 +166,7 @@ func (FilterOutputAcceptUDPOwner) Name() string {
 }
 
 // ContainerAction implements TestCase.ContainerAction.
-func (FilterOutputAcceptUDPOwner) ContainerAction(ip net.IP) error {
+func (FilterOutputAcceptUDPOwner) ContainerAction(ip net.IP, _ int) error {
 	if err := filterTable("-A", "OUTPUT", "-p", "udp", "-m", "owner", "--uid-owner", "root", "-j", "ACCEPT"); err != nil {
 		return err
 	}
@@ -176,7 +176,7 @@ func (FilterOutputAcceptUDPOwner) ContainerAction(ip net.IP) error {
 }
 
 // LocalAction implements TestCase.LocalAction.
-func (FilterOutputAcceptUDPOwner) LocalAction(ip net.IP) error {
+func (FilterOutputAcceptUDPOwner) LocalAction(ip net.IP, _ *net.TCPListener) error {
 	// Listen for UDP packets on acceptPort.
 	return listenUDP(acceptPort, sendloopDuration)
 }
@@ -190,7 +190,7 @@ func (FilterOutputDropUDPOwner) Name() string {
 }
 
 // ContainerAction implements TestCase.ContainerAction.
-func (FilterOutputDropUDPOwner) ContainerAction(ip net.IP) error {
+func (FilterOutputDropUDPOwner) ContainerAction(ip net.IP, _ int) error {
 	if err := filterTable("-A", "OUTPUT", "-p", "udp", "-m", "owner", "--uid-owner", "root", "-j", "DROP"); err != nil {
 		return err
 	}
@@ -200,7 +200,7 @@ func (FilterOutputDropUDPOwner) ContainerAction(ip net.IP) error {
 }
 
 // LocalAction implements TestCase.LocalAction.
-func (FilterOutputDropUDPOwner) LocalAction(ip net.IP) error {
+func (FilterOutputDropUDPOwner) LocalAction(ip net.IP, _ *net.TCPListener) error {
 	// Listen for UDP packets on dropPort.
 	if err := listenUDP(dropPort, sendloopDuration); err == nil {
 		return fmt.Errorf("packets should not be received")
@@ -219,7 +219,7 @@ func (FilterOutputOwnerFail) Name() string {
 }
 
 // ContainerAction implements TestCase.ContainerAction.
-func (FilterOutputOwnerFail) ContainerAction(ip net.IP) error {
+func (FilterOutputOwnerFail) ContainerAction(ip net.IP, _ int) error {
 	if err := filterTable("-A", "OUTPUT", "-p", "udp", "-m", "owner", "-j", "ACCEPT"); err == nil {
 		return fmt.Errorf("Invalid argument")
 	}
@@ -228,7 +228,7 @@ func (FilterOutputOwnerFail) ContainerAction(ip net.IP) error {
 }
 
 // LocalAction implements TestCase.LocalAction.
-func (FilterOutputOwnerFail) LocalAction(ip net.IP) error {
+func (FilterOutputOwnerFail) LocalAction(ip net.IP, _ *net.TCPListener) error {
 	// no-op.
 	return nil
 }
@@ -243,7 +243,7 @@ func (FilterOutputDestination) Name() string {
 }
 
 // ContainerAction implements TestCase.ContainerAction.
-func (FilterOutputDestination) ContainerAction(ip net.IP) error {
+func (FilterOutputDestination) ContainerAction(ip net.IP, _ int) error {
 	rules := [][]string{
 		{"-A", "OUTPUT", "-d", ip.String(), "-j", "ACCEPT"},
 		{"-P", "OUTPUT", "DROP"},
@@ -256,7 +256,7 @@ func (FilterOutputDestination) ContainerAction(ip net.IP) error {
 }
 
 // LocalAction implements TestCase.LocalAction.
-func (FilterOutputDestination) LocalAction(ip net.IP) error {
+func (FilterOutputDestination) LocalAction(ip net.IP, _ *net.TCPListener) error {
 	return listenUDP(acceptPort, sendloopDuration)
 }
 
@@ -270,7 +270,7 @@ func (FilterOutputInvertDestination) Name() string {
 }
 
 // ContainerAction implements TestCase.ContainerAction.
-func (FilterOutputInvertDestination) ContainerAction(ip net.IP) error {
+func (FilterOutputInvertDestination) ContainerAction(ip net.IP, _ int) error {
 	rules := [][]string{
 		{"-A", "OUTPUT", "!", "-d", localIP, "-j", "ACCEPT"},
 		{"-P", "OUTPUT", "DROP"},
@@ -283,6 +283,6 @@ func (FilterOutputInvertDestination) ContainerAction(ip net.IP) error {
 }
 
 // LocalAction implements TestCase.LocalAction.
-func (FilterOutputInvertDestination) LocalAction(ip net.IP) error {
+func (FilterOutputInvertDestination) LocalAction(ip net.IP, _ *net.TCPListener) error {
 	return listenUDP(acceptPort, sendloopDuration)
 }

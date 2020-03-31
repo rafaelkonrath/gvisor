@@ -125,7 +125,11 @@ func (um *UDPMatcher) Match(hook stack.Hook, pkt stack.PacketBuffer, interfaceNa
 			// packet.
 			return false, true
 		}
-		udpHeader = header.UDP(pkt.Data.First())
+		headerView := pkt.Data.First()
+		if hook == stack.Prerouting {
+			headerView = headerView[header.IPv4MinimumSize:]
+		}
+		udpHeader = header.UDP(headerView)
 	}
 
 	// Check whether the source and destination ports are within the
